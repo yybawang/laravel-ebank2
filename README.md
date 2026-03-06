@@ -20,40 +20,22 @@ We highly appreciate you sending us a postcard from your hometown, mentioning wh
 You can install the package via composer:
 
 ```bash
-composer require yybawang/laravel-ebank
+composer require yybawang/laravel-ebank2
 ```
 
 You can publish and run the migrations with:
 
 ```bash
-php artisan vendor:publish --tag="laravel-ebank-migrations"
+php artisan vendor:publish --tag="ebank-migrations"
 php artisan migrate
 ```
 
-You can publish the config file with:
-
-```bash
-php artisan vendor:publish --tag="laravel-ebank-config"
-```
-
-This is the contents of the published config file:
-
-```php
-return [
-];
-```
-
-Optionally, you can publish the views using
-
-```bash
-php artisan vendor:publish --tag="laravel-ebank-views"
-```
 
 ## Usage
 
 ```php
-$eBank = new YYbawang\EBank();
-echo $eBank->echoPhrase('Hello, YYbawang!');
+$balance = EBank::balance(1);
+$transfer_id = EBank::transfer(1, 100, 10101);
 ```
 
 ## Testing
