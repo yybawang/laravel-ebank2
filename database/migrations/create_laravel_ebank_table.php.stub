@@ -1,0 +1,95 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up()
+    {
+        Schema::create('ebank_identities', function (Blueprint $table) {
+            $table->id();
+            $table->string('name', 100)->unique()->comment('身份名称');
+            $table->string('code', 50)->unique()->comment('身份代码');
+            $table->timestamps();
+
+            $table->comment('钱包身份');
+        });
+        \yybawang\ebank\Models\Identity::create([
+            'name' => '会员',
+            'code' => 'user',
+        ]);
+
+        Schema::create('ebank_currencies', function (Blueprint $table) {
+            $table->id();
+            $table->string('name', 100)->unique()->comment('钱包币种名称');
+            $table->string('code', 50)->unique()->comment('币种代码');
+            $table->timestamps();
+
+            $table->comment('钱包币种');
+        });
+        \yybawang\ebank\Models\Currency::create([
+             'name' => '现金',
+            'code' => 'cash',
+        ]);
+
+        Schema::create('ebank_wallets', function (Blueprint $table) {
+            $table->id();
+            $table->bigInteger('user_id')->comment('所属用户');
+            $table->bigInteger('identity_id')->comment('所属身份');
+            $table->bigInteger('currency_id')->comment('所属币种');
+            $table->decimal('balance', 20, 4)->comment('可用余额（不含冻结），可为负数');
+            $table->decimal('freezing', 20, 4)->unsigned()->comment('冻结中金额');
+            $table->timestamps();
+
+            $table->index(['user_id', 'identity_id', 'currency_id']);
+
+            $table->comment('钱包');
+        });
+
+        Schema::create('ebank_reasons', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->comment('Reason 名称');
+            $table->string('code', 100)->comment('Reason 代码');
+            $table->bigInteger('currency_id')->comment('出/入账币种');
+            $table->bigInteger('identity_id')->comment('出/入账身份');
+            $table->string('tips')->nullable()->comment('提示，防止用户看到的私密备注');
+            $table->timestamps();
+
+            $table->unique('code');
+
+            $table->comment('转账Reason（理由）');
+        });
+
+        Schema::create('ebank_freezes', function (Blueprint $table) {
+            $table->id();
+            $table->bigInteger('wallet_id')->comment('所属钱包');
+            $table->decimal('amount', 20, 4)->unsigned()->comment('冻结金额');
+            $table->string('status', 50)->comment('冻结状态，FREEZING 冻结中，UNFREEZE 已解冻');
+            $table->timestamps();
+
+            $table->index('wallet_id');
+
+            $table->comment('冻结记录表');
+        });
+
+        Schema::create('ebank_transfers', function (Blueprint $table) {
+            $table->id();
+            $table->bigInteger('user_id')->comment('所属会员');
+            $table->bigInteger('reason_id')->comment('所属转账理由');
+            $table->bigInteger('currency_id')->comment('所属币种');
+            $table->bigInteger('identity_id')->comment('所属身份');
+            $table->decimal('amount', 20, 4)->comment('转账金额，正数为会员收益，负数则为会员支出');
+            $table->decimal('balance', 20, 4)->comment('转账后余额');
+            $table->string('description')->comment('简单业务场景描述');
+            $table->json('business_data')->nullable()->comment('业务数据');
+            $table->timestamps();
+
+            $table->index('user_id');
+            $table->index('reason_id');
+
+            $table->comment('冻结记录表');
+        });
+    }
+};

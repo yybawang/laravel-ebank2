@@ -1,12 +1,12 @@
 <?php
 
-namespace VendorName\Skeleton\Commands;
+namespace yybawang\ebank\Commands;
 
 use Illuminate\Console\Command;
 
-class SkeletonCommand extends Command
+class EBankCommand extends Command
 {
-    public $signature = 'skeleton';
+    public $signature = 'laravel-ebank';
 
     public $description = 'My command';
 
