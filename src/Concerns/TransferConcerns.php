@@ -20,7 +20,7 @@ trait TransferConcerns
      * @param array|null $business_data
      * @return int
      */
-    public function transfer(int $user_id, float $amount, string $reason_code, string $description = '', ?array $business_data = []): int {
+    public function transfer(int $user_id, float $amount, string $reason_code, string $description = '', ?array $business_data = null): int {
         if($amount == 0){
             return 0;
         }
