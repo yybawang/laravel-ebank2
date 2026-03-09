@@ -25,8 +25,8 @@ trait TransferConcerns
             return 0;
         }
         $reason = $this->getReason($reason_code);
-        $transfer_id = Cache::lock('ebank@transfer:'.$user_id.':'.$reason->currency_id.':'.$reason->identity_id, 10)->block(10, fn() => DB::transaction(function() use ($user_id, $amount, $reason, $description, $business_data){
-            $wallet = $this->getWallet($user_id, $reason->currency_id, $reason->identity_id);
+        $wallet = $this->getWallet($user_id, $reason->currency_id, $reason->identity_id);
+        $transfer_id = Cache::lock('ebank@transfer:'.$wallet->id, 10)->block(10, fn() => DB::transaction(function() use ($user_id, $wallet, $amount, $reason, $description, $business_data){
             // 线程互抢时，如果有两笔入款两笔扣款，可能先扣款两笔导致异常退出而余额对不上，所以这里需允许为负数
 //            abort_if($amount < 0 && $wallet->balance < -$amount, 422, '钱包 '.$wallet->id.' 可用余额不足');
             $wallet->increment('balance', $amount); // increment 也是兼容负数的
@@ -58,15 +58,15 @@ trait TransferConcerns
      * @param array|null $business_data
      * @return void
      */
-    public function faceToFace(int $from_user_id, int $to_user_id, float $amount, string $from_reason_code, string $to_reason_code, string $description = '', ?array $business_data = []): void {
+    public function faceToFace(int $from_user_id, int $to_user_id, float $amount, string $from_reason_code, string $to_reason_code, string $description = '', ?array $business_data = null): void {
         if($amount == 0){
             return;
         }
         $from_reason = $this->getReason($from_reason_code);
         $to_reason = $this->getReason($to_reason_code);
-        Cache::lock('ebank@faceToFace:'.'ebank@transfer:'.$from_user_id.':'.$to_user_id.':'.$from_reason->currency_id.':'.$from_reason->identity_id.':'.$to_reason->currency_id.':'.$to_reason->identity_id, 10)->block(10, fn() => DB::transaction(function() use ($from_user_id, $to_user_id, $amount, $from_reason, $to_reason, $description, $business_data){
-            $from_wallet = $this->getWallet($from_user_id, $from_reason->currency_id, $from_reason->identity_id);
-            $to_wallet = $this->getWallet($to_user_id, $to_reason->currency_id, $to_reason->identity_id);
+        $from_wallet = $this->getWallet($from_user_id, $from_reason->currency_id, $from_reason->identity_id);
+        $to_wallet = $this->getWallet($to_user_id, $to_reason->currency_id, $to_reason->identity_id);
+        Cache::lock('ebank@faceToFace:'.'ebank@transfer:'.$from_wallet->id.':'.$to_wallet->id, 10)->block(10, fn() => DB::transaction(function() use ($from_user_id, $to_user_id, $from_wallet, $to_wallet, $amount, $from_reason, $to_reason, $description, $business_data){
 //            abort_if($amount > 0 && $from_wallet->balance < $amount, 422, '钱包 '.$from_wallet->id.' 可用余额不足');
 //            abort_if($amount < 0 && $to_wallet->balance < -$amount, 422, '钱包 '.$to_wallet->id.' 可用余额不足');
             $from_wallet->decrement('balance', $amount);
