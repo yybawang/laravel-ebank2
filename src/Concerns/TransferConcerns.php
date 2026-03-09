@@ -2,10 +2,10 @@
 
 namespace yybawang\ebank\Concerns;
 
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use yybawang\ebank\Models\Reason;
 use yybawang\ebank\Models\Transfer;
+use yybawang\ebank\Models\Wallet;
 
 trait TransferConcerns
 {
@@ -25,11 +25,14 @@ trait TransferConcerns
             return 0;
         }
         $reason = $this->getReason($reason_code);
-        $transfer_id = Cache::lock('ebank@transfer:'.$user_id.':'.$reason->currency_id.':'.$reason->identity_id)->block(10, fn() => DB::transaction(function() use ($user_id, $amount, $reason, $description, $business_data){
-            $wallet = $this->getWallet($user_id, $reason->currency_id, $reason->identity_id);
-            // 线程互抢时，如果有两笔入款两笔扣款，可能先扣款两笔导致异常退出而余额对不上，所以这里需允许为负数
-//            abort_if($amount < 0 && $wallet->balance < -$amount, 422, '钱包 '.$wallet->id.' 可用余额不足');
-            $wallet->increment('balance', $amount); // increment 也是兼容负数的
+
+        // 先在事务外确保钱包存在（避免 firstOrCreate 在事务内产生 gap lock 导致死锁）
+        $wallet = $this->getWallet($user_id, $reason->currency_id, $reason->identity_id);
+
+        $transfer_id = DB::transaction(function() use ($wallet, $user_id, $amount, $reason, $description, $business_data){
+            // 使用 SELECT ... FOR UPDATE 在数据库层面串行化对同一钱包行的并发访问
+            Wallet::lockForUpdate()->where('id', $wallet->id)->update(['balance' => DB::raw('balance + '.$amount)]);
+
             $transfer = Transfer::create([
                 'user_id' => $user_id,
                 'reason_id' => $reason->id,
@@ -42,7 +45,7 @@ trait TransferConcerns
             ]);
 
             return $transfer->id;
-        }));
+        });
 
         return $transfer_id;
     }
@@ -58,19 +61,20 @@ trait TransferConcerns
      * @param array|null $business_data
      * @return void
      */
-    public function faceToFace(int $from_user_id, int $to_user_id, float $amount, string $from_reason_code, string $to_reason_code, string $description = '', ?array $business_data = []): void {
+    public function faceToFace(int $from_user_id, int $to_user_id, float $amount, string $from_reason_code, string $to_reason_code, string $description = '', ?array $business_data = null): void {
         if($amount == 0){
             return;
         }
         $from_reason = $this->getReason($from_reason_code);
         $to_reason = $this->getReason($to_reason_code);
-        Cache::lock('ebank@faceToFace:'.'ebank@transfer:'.$from_user_id.':'.$to_user_id.':'.$from_reason->currency_id.':'.$from_reason->identity_id.':'.$to_reason->currency_id.':'.$to_reason->identity_id)->block(10, fn() => DB::transaction(function() use ($from_user_id, $to_user_id, $amount, $from_reason, $to_reason, $description, $business_data){
-            $from_wallet = $this->getWallet($from_user_id, $from_reason->currency_id, $from_reason->identity_id);
-            $to_wallet = $this->getWallet($to_user_id, $to_reason->currency_id, $to_reason->identity_id);
-//            abort_if($amount > 0 && $from_wallet->balance < $amount, 422, '钱包 '.$from_wallet->id.' 可用余额不足');
-//            abort_if($amount < 0 && $to_wallet->balance < -$amount, 422, '钱包 '.$to_wallet->id.' 可用余额不足');
-            $from_wallet->decrement('balance', $amount);
-            $to_wallet->increment('balance', $amount);
+
+        // 先在事务外确保钱包存在（避免 firstOrCreate 在事务内产生 gap lock 导致死锁）
+        $from_wallet = $this->getWallet($from_user_id, $from_reason->currency_id, $from_reason->identity_id);
+        $to_wallet = $this->getWallet($to_user_id, $to_reason->currency_id, $to_reason->identity_id);
+
+        DB::transaction(function() use ($from_wallet, $to_wallet, $from_user_id, $to_user_id, $amount, $from_reason, $to_reason, $description, $business_data){
+            Wallet::lockForUpdate()->where('id', $from_wallet->id)->update(['balance' => DB::raw('balance + '.$amount)]);
+            Wallet::lockForUpdate()->where('id', $to_wallet->id)->update(['balance' => DB::raw('balance - '.$amount)]);
 
             Transfer::create([
                 'user_id' => $from_user_id,
@@ -93,7 +97,7 @@ trait TransferConcerns
                 'description' => $description,
                 'business_data' => $business_data,
             ]);
-        }));
+        });
     }
 
     protected function getReason(string $reason_code){
