@@ -31,7 +31,8 @@ trait TransferConcerns
 
         $transfer_id = DB::transaction(function() use ($wallet, $user_id, $amount, $reason, $description, $business_data){
             // 使用 SELECT ... FOR UPDATE 在数据库层面串行化对同一钱包行的并发访问
-            Wallet::lockForUpdate()->where('id', $wallet->id)->update(['balance' => DB::raw('balance + '.$amount)]);
+            $wallet = Wallet::lockForUpdate()->find($wallet->id);
+            $wallet->increment('balance', $amount);
 
             $transfer = Transfer::create([
                 'user_id' => $user_id,
@@ -73,8 +74,11 @@ trait TransferConcerns
         $to_wallet = $this->getWallet($to_user_id, $to_reason->currency_id, $to_reason->identity_id);
 
         DB::transaction(function() use ($from_wallet, $to_wallet, $from_user_id, $to_user_id, $amount, $from_reason, $to_reason, $description, $business_data){
-            Wallet::lockForUpdate()->where('id', $from_wallet->id)->update(['balance' => DB::raw('balance + '.$amount)]);
-            Wallet::lockForUpdate()->where('id', $to_wallet->id)->update(['balance' => DB::raw('balance - '.$amount)]);
+            $from_wallet = Wallet::lockForUpdate()->find($from_wallet->id);
+            $to_wallet = Wallet::lockForUpdate()->find($to_wallet->id);
+
+            $from_wallet->decrement('balance', $amount);
+            $to_wallet->increment('balance', $amount);
 
             Transfer::create([
                 'user_id' => $from_user_id,
